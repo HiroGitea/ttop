@@ -5,8 +5,8 @@
 #
 # Environment variables:
 #   TTOP_VERSION      release tag to install, e.g. v0.1.0 (default: latest)
-#   TTOP_INSTALL_DIR  installation directory (default: /usr/local/bin; falls back
-#                     to ~/.local/bin when it is not writable and sudo is missing)
+#   TTOP_INSTALL_DIR  installation directory (default: ~/.local/bin, which lets
+#                     ttop update itself without sudo)
 set -eu
 
 REPO="HiroGitea/ttop"
@@ -66,17 +66,12 @@ fi
 [ "$expected" = "$actual" ] || die "checksum mismatch for $asset"
 chmod 755 "$tmp/ttop"
 
-dir="${TTOP_INSTALL_DIR:-/usr/local/bin}"
+dir="${TTOP_INSTALL_DIR:-$HOME/.local/bin}"
 sudo=""
 if ! writable "$dir"; then
-    if command -v sudo >/dev/null 2>&1; then
-        sudo="sudo"
-        say "$dir is not writable, using sudo"
-    elif [ -z "${TTOP_INSTALL_DIR:-}" ]; then
-        dir="$HOME/.local/bin"
-    else
-        die "$dir is not writable and sudo is not available"
-    fi
+    command -v sudo >/dev/null 2>&1 || die "$dir is not writable and sudo is not available"
+    sudo="sudo"
+    say "$dir is not writable, using sudo (automatic updates will need: sudo ttop --update)"
 fi
 
 $sudo mkdir -p "$dir"
@@ -86,5 +81,6 @@ $sudo mv -f "$dir/ttop.new" "$dir/ttop"
 say "installed $("$dir/ttop" --version) to $dir/ttop"
 case ":$PATH:" in
     *":$dir:"*) ;;
-    *) say "note: $dir is not in PATH; add it to PATH to run ttop by name" ;;
+    *) say "note: $dir is not in PATH; to run ttop by name, add this line to your shell profile:"
+       say "  export PATH=\"$dir:\$PATH\"" ;;
 esac

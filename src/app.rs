@@ -75,6 +75,12 @@ pub enum Focus {
     Processes,
 }
 
+/// Persistent footer message, e.g. from the auto-updater.
+pub struct Notice {
+    pub text: String,
+    pub warn: bool,
+}
+
 pub struct App {
     pub snap: Snapshot,
     pub duty: Vec<History>,
@@ -96,6 +102,7 @@ pub struct App {
     pub samples: u64,
     pub should_quit: bool,
     pub status: Option<String>,
+    pub notice: Option<Notice>,
 }
 
 impl App {
@@ -120,6 +127,7 @@ impl App {
             samples: 0,
             should_quit: false,
             status: None,
+            notice: None,
         }
     }
 

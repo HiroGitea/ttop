@@ -295,9 +295,13 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
         spans.push(Span::styled(k, Style::new().fg(ACCENT).add_modifier(Modifier::BOLD)));
         spans.push(Span::styled(format!(" {d}  "), Style::new().fg(DIM)));
     }
-    let right = match &app.status {
-        Some(st) => Span::styled(format!(" {st} "), Style::new().fg(WARN)),
-        None => Span::styled(format!(" sample {}ms ", app.snap.sample_ms), Style::new().fg(DIM)),
+    let right = match (&app.status, &app.notice) {
+        (Some(st), _) => Span::styled(format!(" {st} "), Style::new().fg(WARN)),
+        (None, Some(n)) => Span::styled(
+            format!(" {} ", n.text),
+            Style::new().fg(if n.warn { WARN } else { OK }),
+        ),
+        (None, None) => Span::styled(format!(" sample {}ms ", app.snap.sample_ms), Style::new().fg(DIM)),
     };
     let [l, r] = Layout::horizontal([Constraint::Min(0), Constraint::Length(right.width() as u16)])
         .areas(area);

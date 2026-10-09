@@ -40,20 +40,29 @@ ttop は Google Cloud TPU 向けのターミナル監視ツールで、`jtop`（
 curl -fsSL https://raw.githubusercontent.com/HiroGitea/ttop/main/install.sh | sh
 ```
 
-インストールスクリプトは、現在のアーキテクチャ（x86_64 または aarch64）に対応する静的バイナリを GitHub Releases からダウンロードし、SHA-256 チェックサムを検証したうえで `/usr/local/bin` にインストールします。このディレクトリに書き込めない場合は `sudo` を使用し、`sudo` がない場合は `~/.local/bin` にインストールします。次の環境変数を指定できます。
+インストールスクリプトは、現在のアーキテクチャ（x86_64 または aarch64）に対応する静的バイナリを GitHub Releases からダウンロードし、SHA-256 チェックサムを検証したうえで `~/.local/bin` にインストールします。ユーザーが書き込めるディレクトリにインストールすることで、ttop は `sudo` なしで自動アップデートできます。このディレクトリが `PATH` に含まれていない場合は、シェルの設定ファイルに追加する行が表示されます。次の環境変数を指定できます。
 
 | 変数 | 説明 | デフォルト |
 |---|---|---|
 | `TTOP_VERSION` | インストールするリリースのタグ（例：`v0.1.0`） | 最新リリース |
-| `TTOP_INSTALL_DIR` | インストール先ディレクトリ | `/usr/local/bin` |
+| `TTOP_INSTALL_DIR` | インストール先ディレクトリ（書き込めない場合は `sudo` を使用） | `~/.local/bin` |
 
-たとえば、特定のバージョンをホームディレクトリにインストールするには、次のように実行します。
+たとえば、特定のバージョンをシステム全体にインストールするには、次のように実行します。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/HiroGitea/ttop/main/install.sh | TTOP_VERSION=v0.1.0 TTOP_INSTALL_DIR="$HOME/.local/bin" sh
+curl -fsSL https://raw.githubusercontent.com/HiroGitea/ttop/main/install.sh | TTOP_VERSION=v0.1.0 TTOP_INSTALL_DIR=/usr/local/bin sh
 ```
 
-アンインストールするには、バイナリを削除してください（例：`sudo rm /usr/local/bin/ttop`）。
+アンインストールするには、バイナリを削除してください（例：`rm ~/.local/bin/ttop`）。
+
+### 自動アップデート
+
+リリース版は、インタラクティブ UI を起動するたびにバックグラウンドで GitHub Releases を確認します。新しいバージョンがある場合は、ダウンロードとチェックサムの検証を行ったうえで自身のバイナリを置き換え、フッターに `✓ updated to vX.Y.Z · restart to apply` と表示します。すでに最新版の場合は何も表示しません。
+
+- バイナリのあるディレクトリに書き込めない場合（例：`/usr/local/bin`）は、新しいバージョンがあることだけを表示します。`sudo ttop --update` を実行するとアップデートできます。
+- `ttop --update` を実行すると、いつでも最新版に手動でアップデートできます。自動アップデートの対象外であるソースからのビルドにも使用できます。
+- 非インタラクティブモード（`--once`、`--json`、`--list-metrics`）ではアップデートを確認しません。
+- 環境変数 `TTOP_DISABLE_AUTOUPDATER=1` を設定すると、自動アップデートを無効にできます。
 
 ### 手動ダウンロード
 
@@ -105,6 +114,7 @@ ttop -p 8431,8432                         # 複数の libtpu 指標ポートを�
 ttop --once                               # テキストのスナップショットを 1 回出力して終了
 ttop --json -n 0 -i 5                     # 5 秒ごとに JSON を 1 行出力（スクリプトでの収集向け）
 ttop --list-metrics                       # 実行中の libtpu が対応する指標名をすべて表示
+ttop --update                             # 最新版にアップデート
 ```
 
 すべてのオプションは `ttop --help` で確認できます。
@@ -137,7 +147,7 @@ ttop は、Google 公式ツール `tpu-info`（cloud-accelerator-diagnostics）�
 > ランタイム指標サービスは、JAX や PyTorch/XLA などのフレームワークが TPU を使用している間のみ利用できます。ジョブが実行されていない場合、ヘッダーには「libtpu idle」と表示されますが、チップ、プロセス、ホストの情報は引き続き表示されます。
 
 > [!TIP]
-> root 以外のユーザーには自身のプロセスのみが表示されます。他のユーザーのプロセスを表示するには、`sudo` で ttop を実行してください。
+> root 以外のユーザーには自身のプロセスのみが表示されます。他のユーザーのプロセスを表示するには、`sudo "$(command -v ttop)"` のように root 権限で ttop を実行してください（`sudo` はデフォルトで `~/.local/bin` を検索しません）。
 
 ## 開発
 
@@ -152,6 +162,7 @@ src/sampler.rs  サンプリング：実機バックエンド（PCI + gRPC + pro
 src/host.rs     ホストの CPU / メモリ / ネットワーク / ディスク / プロセス統計
 src/app.rs      UI の状態と履歴データ
 src/ui.rs       ratatui による描画
+src/update.rs   GitHub Releases からの自動アップデート
 ```
 
 ### テスト
@@ -160,7 +171,7 @@ src/ui.rs       ratatui による描画
 
 ### リリース
 
-`v*` 形式のタグをプッシュすると、GitHub Actions（`.github/workflows/release.yml`）がテストを実行し、x86_64 と arm64 のランナーで静的バイナリをビルドして、`SHA256SUMS` とともに GitHub Release として公開します。タグは `Cargo.toml` の `version` と一致している必要があります。
+`v*` 形式のタグをプッシュすると、GitHub Actions（`.github/workflows/release.yml`）がテストを実行し、x86_64 と arm64 のランナーで静的バイナリをビルドして、`SHA256SUMS` とともに GitHub Release として公開します。タグは `Cargo.toml` の `version` と一致している必要があります。このワークフローはビルド時に `TTOP_RELEASE_BUILD=1` を設定して自動アップデートを有効にします。ローカルでのビルドでは無効のままです。
 
 ```bash
 git tag v0.1.0

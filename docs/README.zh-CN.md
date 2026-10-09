@@ -40,20 +40,29 @@ ttop 是一款面向 Google Cloud TPU 的终端监控工具，界面风格参照
 curl -fsSL https://raw.githubusercontent.com/HiroGitea/ttop/main/install.sh | sh
 ```
 
-安装脚本会根据当前系统架构（x86_64 或 aarch64）从 GitHub Releases 下载对应的静态二进制文件，校验 SHA-256 后安装到 `/usr/local/bin`；该目录不可写时使用 `sudo`，系统中没有 `sudo` 时改为安装到 `~/.local/bin`。支持以下环境变量：
+安装脚本会根据当前系统架构（x86_64 或 aarch64）从 GitHub Releases 下载对应的静态二进制文件，校验 SHA-256 后安装到 `~/.local/bin`。安装在用户可写的目录中，ttop 即可在无需 `sudo` 的情况下自动更新。若该目录不在 `PATH` 中，脚本会给出需要添加到 shell 配置文件中的语句。支持以下环境变量：
 
 | 变量 | 说明 | 默认值 |
 |---|---|---|
 | `TTOP_VERSION` | 要安装的版本标签，例如 `v0.1.0` | 最新版本 |
-| `TTOP_INSTALL_DIR` | 安装目录 | `/usr/local/bin` |
+| `TTOP_INSTALL_DIR` | 安装目录；目录不可写时使用 `sudo` | `~/.local/bin` |
 
-例如，将指定版本安装到用户目录：
+例如，将指定版本安装到系统目录：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/HiroGitea/ttop/main/install.sh | TTOP_VERSION=v0.1.0 TTOP_INSTALL_DIR="$HOME/.local/bin" sh
+curl -fsSL https://raw.githubusercontent.com/HiroGitea/ttop/main/install.sh | TTOP_VERSION=v0.1.0 TTOP_INSTALL_DIR=/usr/local/bin sh
 ```
 
-如需卸载，删除安装目录中的 `ttop` 文件即可，例如 `sudo rm /usr/local/bin/ttop`。
+如需卸载，删除安装目录中的 `ttop` 文件即可，例如 `rm ~/.local/bin/ttop`。
+
+### 自动更新
+
+正式发布的版本在每次启动交互界面时，会在后台检查 GitHub Releases。发现新版本后，ttop 会自动下载、校验并替换自身的二进制文件，底栏随即显示 `✓ updated to vX.Y.Z · restart to apply`；已是最新版本时不显示任何提示。
+
+- 若二进制文件所在目录不可写（例如 `/usr/local/bin`），ttop 仅提示有新版本，可执行 `sudo ttop --update` 完成更新。
+- `ttop --update` 可随时手动更新到最新版本，同样适用于从源码编译的版本（此类版本不会自动更新）。
+- 非交互模式（`--once`、`--json`、`--list-metrics`）不检查更新。
+- 设置环境变量 `TTOP_DISABLE_AUTOUPDATER=1` 可关闭自动更新。
 
 ### 手动下载
 
@@ -105,6 +114,7 @@ ttop -p 8431,8432                         # 指定多个 libtpu 指标端口
 ttop --once                               # 输出一次文本快照后退出
 ttop --json -n 0 -i 5                     # 每 5 秒输出一行 JSON，便于脚本采集
 ttop --list-metrics                       # 列出当前 libtpu 支持的全部指标名称
+ttop --update                             # 更新到最新版本
 ```
 
 完整参数列表请参阅 `ttop --help`。
@@ -137,7 +147,7 @@ ttop 的数据来源与 Google 官方工具 `tpu-info`（cloud-accelerator-diagn
 > 运行时指标服务仅在 JAX、PyTorch/XLA 等框架占用 TPU 期间可用。无任务运行时，顶栏显示 “libtpu idle”，芯片、进程与主机信息仍正常显示。
 
 > [!TIP]
-> 非 root 用户仅能看到本用户的进程。如需查看其他用户的进程，请使用 `sudo` 运行 ttop。
+> 非 root 用户仅能看到本用户的进程。如需查看其他用户的进程，请以 root 身份运行 ttop，例如 `sudo "$(command -v ttop)"`（`sudo` 默认不会在 `~/.local/bin` 中查找命令）。
 
 ## 开发
 
@@ -152,6 +162,7 @@ src/sampler.rs  采样：真实后端（PCI + gRPC + procfs）与 --demo 模拟�
 src/host.rs     主机 CPU / 内存 / 网络 / 磁盘 / 进程统计
 src/app.rs      界面状态与历史数据
 src/ui.rs       ratatui 渲染
+src/update.rs   从 GitHub Releases 自动更新
 ```
 
 ### 测试
@@ -160,7 +171,7 @@ src/ui.rs       ratatui 渲染
 
 ### 发布
 
-推送 `v*` 格式的标签后，GitHub Actions（`.github/workflows/release.yml`）会运行测试，在 x86_64 与 arm64 runner 上编译静态二进制文件，并连同 `SHA256SUMS` 一起发布为 GitHub Release。标签版本须与 `Cargo.toml` 中的 `version` 一致。
+推送 `v*` 格式的标签后，GitHub Actions（`.github/workflows/release.yml`）会运行测试，在 x86_64 与 arm64 runner 上编译静态二进制文件，并连同 `SHA256SUMS` 一起发布为 GitHub Release。标签版本须与 `Cargo.toml` 中的 `version` 一致。该流程在编译时设置 `TTOP_RELEASE_BUILD=1` 以启用自动更新，本地编译的版本默认不启用。
 
 ```bash
 git tag v0.1.0

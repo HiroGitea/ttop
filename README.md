@@ -40,20 +40,29 @@ ttop is a terminal monitoring tool for Google Cloud TPU, with an interface model
 curl -fsSL https://raw.githubusercontent.com/HiroGitea/ttop/main/install.sh | sh
 ```
 
-The script downloads the static binary for the current architecture (x86_64 or aarch64) from GitHub Releases, verifies its SHA-256 checksum, and installs it to `/usr/local/bin`, using `sudo` when that directory is not writable. If `sudo` is unavailable, it installs to `~/.local/bin` instead. The following environment variables are supported:
+The script downloads the static binary for the current architecture (x86_64 or aarch64) from GitHub Releases, verifies its SHA-256 checksum, and installs it to `~/.local/bin`. Installing into a user-writable directory allows ttop to update itself without `sudo`. If the directory is not in `PATH`, the script prints the line to add to the shell profile. The following environment variables are supported:
 
 | Variable | Description | Default |
 |---|---|---|
 | `TTOP_VERSION` | Release tag to install, e.g. `v0.1.0` | Latest release |
-| `TTOP_INSTALL_DIR` | Installation directory | `/usr/local/bin` |
+| `TTOP_INSTALL_DIR` | Installation directory; `sudo` is used if it is not writable | `~/.local/bin` |
 
-For example, to install a specific version into the home directory:
+For example, to install a specific version system-wide:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/HiroGitea/ttop/main/install.sh | TTOP_VERSION=v0.1.0 TTOP_INSTALL_DIR="$HOME/.local/bin" sh
+curl -fsSL https://raw.githubusercontent.com/HiroGitea/ttop/main/install.sh | TTOP_VERSION=v0.1.0 TTOP_INSTALL_DIR=/usr/local/bin sh
 ```
 
-To uninstall, delete the binary, e.g. `sudo rm /usr/local/bin/ttop`.
+To uninstall, delete the binary, e.g. `rm ~/.local/bin/ttop`.
+
+### Automatic updates
+
+Release builds check GitHub Releases in the background each time the interactive UI starts. When a newer version is available, ttop downloads it, verifies its checksum and replaces its own binary; the footer then shows `✓ updated to vX.Y.Z · restart to apply`. Nothing is shown when ttop is already up to date.
+
+- If the binary's directory is not writable (for example `/usr/local/bin`), ttop only reports the new version; run `sudo ttop --update` to install it.
+- `ttop --update` updates to the latest release on demand. It also works for builds from source, which never update automatically.
+- Non-interactive modes (`--once`, `--json`, `--list-metrics`) do not check for updates.
+- Set `TTOP_DISABLE_AUTOUPDATER=1` to turn automatic updates off.
 
 ### Manual download
 
@@ -105,6 +114,7 @@ ttop -p 8431,8432                         # query multiple libtpu metrics ports
 ttop --once                               # print a single text snapshot and exit
 ttop --json -n 0 -i 5                     # emit one JSON line every 5 s, for use in scripts
 ttop --list-metrics                       # list all metric names supported by the running libtpu
+ttop --update                             # update to the latest release
 ```
 
 Run `ttop --help` for the complete list of options.
@@ -137,7 +147,7 @@ ttop uses the same data sources as Google's official `tpu-info` tool (cloud-acce
 > The runtime metrics service is only available while a framework such as JAX or PyTorch/XLA holds the TPU. When no workload is running, the header shows "libtpu idle", and chip, process and host information remains available.
 
 > [!TIP]
-> Non-root users can only see their own processes. To see processes owned by other users, run ttop with `sudo`.
+> Non-root users can only see their own processes. To see processes owned by other users, run ttop as root, e.g. `sudo "$(command -v ttop)"` (`sudo` does not search `~/.local/bin` by default).
 
 ## Development
 
@@ -152,6 +162,7 @@ src/sampler.rs  sampling: real backend (PCI + gRPC + procfs) and the --demo mock
 src/host.rs     host CPU / memory / network / disk / process statistics
 src/app.rs      UI state and history
 src/ui.rs       ratatui rendering
+src/update.rs   self-update from GitHub Releases
 ```
 
 ### Testing
@@ -160,7 +171,7 @@ src/ui.rs       ratatui rendering
 
 ### Releasing
 
-Pushing a tag of the form `v*` triggers the GitHub Actions workflow (`.github/workflows/release.yml`), which runs the tests, builds static binaries on x86_64 and arm64 runners, and publishes them together with `SHA256SUMS` as a GitHub Release. The tag must match the `version` in `Cargo.toml`.
+Pushing a tag of the form `v*` triggers the GitHub Actions workflow (`.github/workflows/release.yml`), which runs the tests, builds static binaries on x86_64 and arm64 runners, and publishes them together with `SHA256SUMS` as a GitHub Release. The tag must match the `version` in `Cargo.toml`. The workflow sets `TTOP_RELEASE_BUILD=1` at build time, which enables the auto-updater; local builds leave it disabled.
 
 ```bash
 git tag v0.1.0

@@ -8,6 +8,7 @@ mod model;
 mod proto;
 mod sampler;
 mod ui;
+mod update;
 
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -20,10 +21,11 @@ use anyhow::{bail, Result};
 use clap::Parser;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 
-use crate::app::{App, Focus};
+use crate::app::{App, Focus, Notice};
 use crate::device::TpuChip;
 use crate::model::{RuntimeState, Snapshot};
 use crate::sampler::{Backend, MockBackend, RealBackend};
+use crate::update::Outcome;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -75,6 +77,10 @@ struct Cli {
     /// List metric names supported by the running libtpu and exit.
     #[arg(long)]
     list_metrics: bool,
+
+    /// Update ttop to the latest GitHub release and exit.
+    #[arg(long)]
+    update: bool,
 }
 
 fn main() -> Result<()> {
@@ -103,6 +109,17 @@ fn main() -> Result<()> {
         names.sort();
         for n in names {
             println!("{n}");
+        }
+        return Ok(());
+    }
+
+    if cli.update {
+        match update::update()? {
+            Outcome::UpToDate => println!("ttop {} is up to date", update::CURRENT),
+            Outcome::Updated { version } => println!("updated ttop {} -> {version}", update::CURRENT),
+            Outcome::NeedsPermission { dir, .. } => {
+                bail!("{} is not writable; rerun with sudo", dir.display())
+            }
         }
         return Ok(());
     }
@@ -163,6 +180,17 @@ fn run_tui(backend: Box<dyn Backend>, interval: Duration) -> Result<()> {
         });
     }
 
+    // Background update check: silent unless an update was installed or needs sudo.
+    let (upd_tx, upd_rx) = mpsc::channel::<Outcome>();
+    if update::auto_update_enabled() {
+        thread::spawn(move || {
+            if let Ok(outcome) = update::update() {
+                let _ = upd_tx.send(outcome);
+            }
+        });
+    }
+    let mut exit_message = None;
+
     let mut terminal = ratatui::init();
     let mut app = App::new(interval);
     let res = (|| -> Result<()> {
@@ -171,6 +199,30 @@ fn run_tui(backend: Box<dyn Backend>, interval: Duration) -> Result<()> {
         while !app.should_quit {
             while let Ok(s) = rx.try_recv() {
                 app.apply(s);
+                dirty = true;
+            }
+            if let Ok(outcome) = upd_rx.try_recv() {
+                match outcome {
+                    Outcome::UpToDate => {}
+                    Outcome::Updated { version } => {
+                        app.notice = Some(Notice {
+                            text: format!("✓ updated to v{version} · restart to apply"),
+                            warn: false,
+                        });
+                        exit_message = Some(format!(
+                            "ttop was updated to v{version}; the new version runs next time."
+                        ));
+                    }
+                    Outcome::NeedsPermission { version, .. } => {
+                        app.notice = Some(Notice {
+                            text: format!("v{version} available · sudo ttop --update"),
+                            warn: true,
+                        });
+                        exit_message = Some(format!(
+                            "ttop v{version} is available; run `sudo ttop --update` to install it."
+                        ));
+                    }
+                }
                 dirty = true;
             }
             if let Some(t) = status_until {
@@ -200,6 +252,9 @@ fn run_tui(backend: Box<dyn Backend>, interval: Duration) -> Result<()> {
         Ok(())
     })();
     ratatui::restore();
+    if let Some(msg) = exit_message {
+        eprintln!("{msg}");
+    }
     res
 }
 
