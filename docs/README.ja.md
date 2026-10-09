@@ -34,16 +34,43 @@ ttop は Google Cloud TPU 向けのターミナル監視ツールで、`jtop`（
 
 ## インストール
 
-### ビルド済みバイナリ
+### ワンライナーでのインストール
 
-`dist/` ディレクトリには、TPU VM にコピーしてそのまま実行できるビルド済みバイナリが含まれています。
+```bash
+curl -fsSL https://raw.githubusercontent.com/HiroGitea/ttop/main/install.sh | sh
+```
 
-- `ttop-x86_64-linux-musl` — x86_64、静的リンク
-- `ttop-aarch64-linux-gnu` — aarch64
+インストールスクリプトは、現在のアーキテクチャ（x86_64 または aarch64）に対応する静的バイナリを GitHub Releases からダウンロードし、SHA-256 チェックサムを検証したうえで `/usr/local/bin` にインストールします。このディレクトリに書き込めない場合は `sudo` を使用し、`sudo` がない場合は `~/.local/bin` にインストールします。次の環境変数を指定できます。
+
+| 変数 | 説明 | デフォルト |
+|---|---|---|
+| `TTOP_VERSION` | インストールするリリースのタグ（例：`v0.1.0`） | 最新リリース |
+| `TTOP_INSTALL_DIR` | インストール先ディレクトリ | `/usr/local/bin` |
+
+たとえば、特定のバージョンをホームディレクトリにインストールするには、次のように実行します。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/HiroGitea/ttop/main/install.sh | TTOP_VERSION=v0.1.0 TTOP_INSTALL_DIR="$HOME/.local/bin" sh
+```
+
+アンインストールするには、バイナリを削除してください（例：`sudo rm /usr/local/bin/ttop`）。
+
+### 手動ダウンロード
+
+ビルド済みバイナリは [Releases](https://github.com/HiroGitea/ttop/releases) ページで公開しています。
+
+| ファイル | プラットフォーム |
+|---|---|
+| `ttop-linux-x86_64` | x86_64 Linux、静的リンク（musl） |
+| `ttop-linux-aarch64` | aarch64 Linux、静的リンク（musl） |
+
+ダウンロード後、`chmod +x` で実行権限を付与してください。チェックサムは `SHA256SUMS` に記載されています。
 
 ### ソースからのビルド
 
 ```bash
+git clone https://github.com/HiroGitea/ttop.git
+cd ttop
 cargo build --release
 ./target/release/ttop
 ```
@@ -130,6 +157,15 @@ src/ui.rs       ratatui による描画
 ### テスト
 
 `cargo test` で単体テストを実行できます。protobuf のエンコードとデコード、2 種類のデバイス ID 形式、チップ単位の duty cycle を各デバイスに複製するロジック、および tpu-info の `_get_percentile` と同一のパーセンタイル計算をテストしています。
+
+### リリース
+
+`v*` 形式のタグをプッシュすると、GitHub Actions（`.github/workflows/release.yml`）がテストを実行し、x86_64 と arm64 のランナーで静的バイナリをビルドして、`SHA256SUMS` とともに GitHub Release として公開します。タグは `Cargo.toml` の `version` と一致している必要があります。
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
 
 ## ライセンス
 

@@ -34,16 +34,43 @@ ttop 是一款面向 Google Cloud TPU 的终端监控工具，界面风格参照
 
 ## 安装
 
-### 预编译二进制
+### 一键安装
 
-`dist/` 目录提供以下预编译文件，复制到 TPU VM 后即可直接运行：
+```bash
+curl -fsSL https://raw.githubusercontent.com/HiroGitea/ttop/main/install.sh | sh
+```
 
-- `ttop-x86_64-linux-musl` — x86_64，静态链接
-- `ttop-aarch64-linux-gnu` — aarch64
+安装脚本会根据当前系统架构（x86_64 或 aarch64）从 GitHub Releases 下载对应的静态二进制文件，校验 SHA-256 后安装到 `/usr/local/bin`；该目录不可写时使用 `sudo`，系统中没有 `sudo` 时改为安装到 `~/.local/bin`。支持以下环境变量：
+
+| 变量 | 说明 | 默认值 |
+|---|---|---|
+| `TTOP_VERSION` | 要安装的版本标签，例如 `v0.1.0` | 最新版本 |
+| `TTOP_INSTALL_DIR` | 安装目录 | `/usr/local/bin` |
+
+例如，将指定版本安装到用户目录：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/HiroGitea/ttop/main/install.sh | TTOP_VERSION=v0.1.0 TTOP_INSTALL_DIR="$HOME/.local/bin" sh
+```
+
+如需卸载，删除安装目录中的 `ttop` 文件即可，例如 `sudo rm /usr/local/bin/ttop`。
+
+### 手动下载
+
+预编译文件发布在 [Releases](https://github.com/HiroGitea/ttop/releases) 页面：
+
+| 文件 | 平台 |
+|---|---|
+| `ttop-linux-x86_64` | x86_64 Linux，静态链接（musl） |
+| `ttop-linux-aarch64` | aarch64 Linux，静态链接（musl） |
+
+下载后执行 `chmod +x` 赋予可执行权限即可运行。各文件的校验值见 `SHA256SUMS`。
 
 ### 从源码编译
 
 ```bash
+git clone https://github.com/HiroGitea/ttop.git
+cd ttop
 cargo build --release
 ./target/release/ttop
 ```
@@ -130,6 +157,15 @@ src/ui.rs       ratatui 渲染
 ### 测试
 
 执行 `cargo test` 运行单元测试，覆盖范围包括 protobuf 编解码、两种 device ID 格式、按芯片复制 duty cycle 的逻辑，以及与 tpu-info 中 `_get_percentile` 一致的分位数算法。
+
+### 发布
+
+推送 `v*` 格式的标签后，GitHub Actions（`.github/workflows/release.yml`）会运行测试，在 x86_64 与 arm64 runner 上编译静态二进制文件，并连同 `SHA256SUMS` 一起发布为 GitHub Release。标签版本须与 `Cargo.toml` 中的 `version` 一致。
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
 
 ## 许可证
 

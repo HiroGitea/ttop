@@ -34,16 +34,43 @@ ttop is a terminal monitoring tool for Google Cloud TPU, with an interface model
 
 ## Installation
 
-### Prebuilt binaries
+### Quick install
 
-The `dist/` directory contains prebuilt binaries that can be copied to a TPU VM and run directly:
+```bash
+curl -fsSL https://raw.githubusercontent.com/HiroGitea/ttop/main/install.sh | sh
+```
 
-- `ttop-x86_64-linux-musl` — x86_64, statically linked
-- `ttop-aarch64-linux-gnu` — aarch64
+The script downloads the static binary for the current architecture (x86_64 or aarch64) from GitHub Releases, verifies its SHA-256 checksum, and installs it to `/usr/local/bin`, using `sudo` when that directory is not writable. If `sudo` is unavailable, it installs to `~/.local/bin` instead. The following environment variables are supported:
+
+| Variable | Description | Default |
+|---|---|---|
+| `TTOP_VERSION` | Release tag to install, e.g. `v0.1.0` | Latest release |
+| `TTOP_INSTALL_DIR` | Installation directory | `/usr/local/bin` |
+
+For example, to install a specific version into the home directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/HiroGitea/ttop/main/install.sh | TTOP_VERSION=v0.1.0 TTOP_INSTALL_DIR="$HOME/.local/bin" sh
+```
+
+To uninstall, delete the binary, e.g. `sudo rm /usr/local/bin/ttop`.
+
+### Manual download
+
+Prebuilt binaries are published on the [Releases](https://github.com/HiroGitea/ttop/releases) page:
+
+| File | Platform |
+|---|---|
+| `ttop-linux-x86_64` | x86_64 Linux, statically linked (musl) |
+| `ttop-linux-aarch64` | aarch64 Linux, statically linked (musl) |
+
+After downloading, make the file executable with `chmod +x`. Checksums are listed in `SHA256SUMS`.
 
 ### Building from source
 
 ```bash
+git clone https://github.com/HiroGitea/ttop.git
+cd ttop
 cargo build --release
 ./target/release/ttop
 ```
@@ -130,6 +157,15 @@ src/ui.rs       ratatui rendering
 ### Testing
 
 `cargo test` runs the unit tests, which cover protobuf encoding and decoding, both device ID formats, the per-chip duty cycle replication logic, and the percentile algorithm (identical to `_get_percentile` in tpu-info).
+
+### Releasing
+
+Pushing a tag of the form `v*` triggers the GitHub Actions workflow (`.github/workflows/release.yml`), which runs the tests, builds static binaries on x86_64 and arm64 runners, and publishes them together with `SHA256SUMS` as a GitHub Release. The tag must match the `version` in `Cargo.toml`.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
 
 ## License
 

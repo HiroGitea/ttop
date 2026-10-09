@@ -1,0 +1,91 @@
+name: Release
+
+# Push a `v*` tag to test, build and publish a GitHub Release.
+# Manual runs (workflow_dispatch) only test and build.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-24.04
+            asset: ttop-linux-x86_64
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+            asset: ttop-linux-aarch64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Check tag matches Cargo.toml version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(cargo pkgid | sed 's/.*[#@]//')"
+          test "$version" = "${GITHUB_REF_NAME#v}" || {
+            echo "::error::tag $GITHUB_REF_NAME does not match Cargo.toml version $version"
+            exit 1
+          }
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build static binary
+        env:
+          RUSTFLAGS: -C linker=rust-lld -C target-feature=+crt-static
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package
+        run: |
+          mkdir -p out
+          cp target/${{ matrix.target }}/release/ttop out/${{ matrix.asset }}
+          out/${{ matrix.asset }} --version
+          file out/${{ matrix.asset }} | tee /dev/stderr | grep -Eq 'statically linked|static-pie linked'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: out/${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: out
+        run: |
+          sha256sum ttop-linux-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag
