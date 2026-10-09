@@ -1,0 +1,136 @@
+<div align="center">
+
+# ttop
+
+**Google Cloud TPU 向けのインタラクティブなターミナルモニター**
+
+![Rust](https://img.shields.io/badge/Rust-2021_edition-B7410E?style=flat-square&logo=rust&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-Linux-0A7BBB?style=flat-square&logo=linux&logoColor=white)
+![Cloud TPU](https://img.shields.io/badge/Cloud_TPU-v2_%E2%80%93_7x-4285F4?style=flat-square)
+![License](https://img.shields.io/badge/license-Apache--2.0-3DA639?style=flat-square)
+
+[English](../README.md) | [简体中文](README.zh-CN.md) | **日本語**
+
+[画面構成](#画面構成) · [インストール](#インストール) · [使い方](#使い方) · [データソース](#データソース) · [開発](#開発)
+
+</div>
+
+<p align="center">
+  <img src="screenshot.png" alt="ttop の画面" width="100%">
+</p>
+
+ttop は Google Cloud TPU 向けのターミナル監視ツールで、`jtop`（Jetson）や `btop` を参考にしたインターフェースを備えています。Rust と ratatui で実装されており、単一の静的バイナリとして配布され、実行時に Python を必要としません。
+
+## 画面構成
+
+| 領域 | 内容 |
+|---|---|
+| ヘッダー | ホスト名、チップの種類と数、トポロジー、libtpu の接続状態とバージョン、更新間隔、現在時刻 |
+| TPU devices | 各論理デバイスの TensorCore デューティサイクル、HBM 使用量、HBM 帯域幅の使用率、HLO キューの長さ、使用中のプロセス |
+| Host | CPU 全体の使用率、コアごとのヒートストリップ（180 コアを超える TPU ホスト向け）、メモリ、スワップ、ネットワーク、ディスク、ロードアベレージ、稼働時間 |
+| 履歴グラフ | 切り替え可能な 2 つの履歴グラフ（duty / HBM / 帯域幅）。全デバイスまたは選択中のデバイスのみを表示でき、デバイス数が 8 を超える場合は平均値の線を描画します |
+| デバイス詳細 | 選択中のデバイスのパス、所属プロセス、各指標、TensorCore のアイドル時間、HLO 実行時間（mean / p50 / p90 / p95 / p99.9） |
+| TPU processes | TPU デバイスファイルを保持しているプロセスと、各プロセスが使用するデバイスおよび HBM の合計 |
+
+## インストール
+
+### ビルド済みバイナリ
+
+`dist/` ディレクトリには、TPU VM にコピーしてそのまま実行できるビルド済みバイナリが含まれています。
+
+- `ttop-x86_64-linux-musl` — x86_64、静的リンク
+- `ttop-aarch64-linux-gnu` — aarch64
+
+### ソースからのビルド
+
+```bash
+cargo build --release
+./target/release/ttop
+```
+
+`protoc` は不要です。libtpu 指標サービスの protobuf メッセージは、手書きの prost 構造体（`src/proto.rs`）として実装されています。
+
+### 静的バイナリのクロスコンパイル
+
+別のマシンで x86_64 向けの静的バイナリをビルドし、TPU VM にコピーして実行する場合は、次のコマンドを使用します。
+
+```bash
+rustup target add x86_64-unknown-linux-musl
+RUSTFLAGS="-C linker=rust-lld -C target-feature=+crt-static" \
+  cargo build --release --target x86_64-unknown-linux-musl
+```
+
+## 使い方
+
+### インタラクティブモード
+
+```bash
+ttop                                      # インタラクティブ UI を起動
+ttop --demo                               # シミュレーションデータで UI を確認（TPU 不要）
+ttop --demo --chip 7x --demo-devices 16   # TPU7x の論理デバイス 16 個をシミュレート
+ttop -i 0.5                               # 更新間隔を 0.5 秒に設定
+ttop -p 8431,8432                         # 複数の libtpu 指標ポートを指定
+```
+
+### 非インタラクティブ出力
+
+```bash
+ttop --once                               # テキストのスナップショットを 1 回出力して終了
+ttop --json -n 0 -i 5                     # 5 秒ごとに JSON を 1 行出力（スクリプトでの収集向け）
+ttop --list-metrics                       # 実行中の libtpu が対応する指標名をすべて表示
+```
+
+すべてのオプションは `ttop --help` で確認できます。
+
+### キー操作
+
+| キー | 動作 |
+|---|---|
+| <kbd>q</kbd> / <kbd>Esc</kbd> / <kbd>Ctrl</kbd>+<kbd>C</kbd> | 終了 |
+| <kbd>↑</kbd> <kbd>↓</kbd> / <kbd>k</kbd> <kbd>j</kbd> | デバイスまたはプロセスを選択 |
+| <kbd>Tab</kbd> | デバイス一覧とプロセス一覧の間でフォーカスを切り替え |
+| <kbd>c</kbd> / <kbd>v</kbd> | 左 / 右のグラフの指標を切り替え（duty → HBM → 帯域幅） |
+| <kbd>a</kbd> | グラフの表示対象を全デバイスと選択中のデバイスで切り替え |
+| <kbd>p</kbd> / <kbd>Space</kbd> | サンプリングの一時停止 / 再開 |
+| <kbd>+</kbd> / <kbd>-</kbd> | 更新間隔を長く / 短く（0.1 – 10 秒） |
+| <kbd>r</kbd> | グラフの履歴を消去 |
+| <kbd>?</kbd> / <kbd>h</kbd> / <kbd>F1</kbd> | ヘルプを表示 |
+
+## データソース
+
+ttop は、Google 公式ツール `tpu-info`（cloud-accelerator-diagnostics）と同じデータソースを使用しています。
+
+| データ | 取得元 |
+|---|---|
+| チップの検出 | `/sys/bus/pci/devices` から Google のベンダー ID `0x1ae0` を持つデバイスを抽出し、PCI デバイス ID により v2 / v3 / v4 / v5e / v5p / v6e / TPU7x を識別 |
+| ランタイム指標 | libtpu に組み込まれた gRPC サービス `tpu.monitoring.runtime.RuntimeMetricService`（デフォルトは `localhost:8431`）。マルチスライスのジョブでは、`TPU_RUNTIME_METRICS_PORTS=8431,8432,...` または `-p` で複数のポートを指定 |
+| プロセス | `/proc/*/fd` を走査し、`/dev/vfio/N` または `/dev/accelN` を開いているプロセスを検出 |
+
+> [!NOTE]
+> ランタイム指標サービスは、JAX や PyTorch/XLA などのフレームワークが TPU を使用している間のみ利用できます。ジョブが実行されていない場合、ヘッダーには「libtpu idle」と表示されますが、チップ、プロセス、ホストの情報は引き続き表示されます。
+
+> [!TIP]
+> root 以外のユーザーには自身のプロセスのみが表示されます。他のユーザーのプロセスを表示するには、`sudo` で ttop を実行してください。
+
+## 開発
+
+### コード構成
+
+```
+src/main.rs     コマンドライン引数、イベントループ、--once / --json 出力
+src/device.rs   PCI sysfs によるチップ検出、/proc による使用中プロセスの検出
+src/proto.rs    libtpu 指標サービスの protobuf メッセージ（手書きの prost）
+src/grpc.rs     tonic クライアント（GetRuntimeMetric / ListSupportedMetrics）
+src/sampler.rs  サンプリング：実機バックエンド（PCI + gRPC + procfs）と --demo のモックバックエンド
+src/host.rs     ホストの CPU / メモリ / ネットワーク / ディスク / プロセス統計
+src/app.rs      UI の状態と履歴データ
+src/ui.rs       ratatui による描画
+```
+
+### テスト
+
+`cargo test` で単体テストを実行できます。protobuf のエンコードとデコード、2 種類のデバイス ID 形式、チップ単位の duty cycle を各デバイスに複製するロジック、および tpu-info の `_get_percentile` と同一のパーセンタイル計算をテストしています。
+
+## ライセンス
+
+本プロジェクトは Apache License 2.0 の下で公開されています。
